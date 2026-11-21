@@ -1,0 +1,444 @@
+/* Interactive Tables */
+
+.rt-root .rt-wrap {
+  position: relative;
+  overflow-x: auto;
+  padding: 2px 0 6px;
+}
+
+.rt-root table.rt-table {
+  border-collapse: collapse;
+  margin: 0;
+  table-layout: auto;
+}
+
+.rt-root table.rt-table.rt-fixed {
+  table-layout: fixed;
+}
+
+.rt-root .rt-gutter-col {
+  width: 24px;
+}
+
+/* Cells: wrap only between whole words; a single word wider than the column breaks as a last resort. */
+.rt-root .rt-table .rt-cell {
+  border: 1px solid var(--table-border-color, var(--background-modifier-border));
+  /* Themes often zero the padding of a row's first/last cell, which pushes
+     centered text off-center, so keep the sides equal. */
+  padding: 4px 8px !important;
+  vertical-align: top;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: manual;
+  min-width: 40px;
+  position: relative;
+}
+
+.rt-root .rt-table th.rt-cell {
+  background: var(--table-header-background, var(--background-secondary));
+  font-weight: var(--table-header-weight, 600);
+  text-align: left;
+}
+
+.rt-root .rt-cell-content > :first-child,
+.rt-root .rt-cell-content > div > :first-child {
+  margin-top: 0;
+}
+.rt-root .rt-cell-content > :last-child,
+.rt-root .rt-cell-content > div > :last-child {
+  margin-bottom: 0;
+}
+.rt-root .rt-cell-content p {
+  margin: 0.2em 0;
+}
+.rt-root .rt-cell-content ul,
+.rt-root .rt-cell-content ol {
+  padding-inline-start: 1.4em;
+  margin: 0.2em 0;
+}
+
+/* An overlay rather than a background, so a cell's own background color still shows through. */
+.rt-root .rt-cell.rt-selected {
+  box-shadow: inset 0 0 0 100vmax var(--text-selection);
+}
+
+.rt-root .rt-cell.rt-editing {
+  padding: 0;
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
+}
+
+.rt-root textarea.rt-editor {
+  display: block;
+  width: 100%;
+  min-height: 2em;
+  resize: none;
+  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 4px 8px;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  background: var(--background-primary);
+  white-space: pre-wrap;
+}
+
+/* Handles */
+
+.rt-root .rt-col-handles th,
+.rt-root .rt-row-handle {
+  border: none;
+  background: transparent;
+  padding: 0;
+  position: relative;
+}
+
+.rt-root .rt-col-handles th {
+  height: 14px;
+}
+
+.rt-root .rt-grip {
+  color: var(--text-faint);
+  cursor: grab;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 120ms;
+  line-height: 1;
+  font-size: 14px;
+  text-align: center;
+  border-radius: 4px;
+}
+
+.rt-root .rt-grip:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.rt-root .rt-wrap:hover .rt-grip {
+  opacity: 0.6;
+}
+.rt-root .rt-wrap .rt-grip:hover {
+  opacity: 1;
+}
+
+.rt-root .rt-grip-col {
+  margin: 0 auto;
+  width: 28px;
+  height: 14px;
+}
+
+.rt-root .rt-grip-row {
+  width: 16px;
+  margin: 4px auto 0;
+  padding: 2px 0;
+}
+
+/* Column resize handle sits on the right edge of each handle-row cell and
+   extends down the full table height while hovered. */
+.rt-root .rt-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 14px;
+  cursor: col-resize;
+  z-index: 2;
+}
+.rt-root .rt-resizer::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+}
+.rt-root .rt-resizer:hover::after,
+.rt-root .rt-resizing .rt-resizer:hover::after {
+  background: var(--interactive-accent);
+}
+.rt-root .rt-resizing,
+.rt-root .rt-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+/* Drop indicator */
+
+.rt-root .rt-drop-indicator {
+  position: absolute;
+  display: none;
+  height: 3px;
+  background: var(--interactive-accent);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 5;
+}
+.rt-root .rt-drop-indicator.is-col {
+  width: 3px;
+}
+.rt-root .rt-drop-indicator.is-visible {
+  display: block;
+}
+
+.rt-root .rt-dragging .rt-cell {
+  transition: none;
+}
+
+/* Row resize handle: bottom edge of each row's gutter cell, stretched across the table on hover. */
+.rt-root .rt-row-handle {
+  vertical-align: top;
+}
+.rt-root .rt-row-resizer {
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  height: 8px;
+  width: 24px;
+  cursor: row-resize;
+  z-index: 2;
+}
+.rt-root .rt-row-resizer::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 3px;
+  height: 2px;
+  border-radius: 1px;
+  background: transparent;
+}
+.rt-root .rt-row-resizer:hover::after {
+  background: var(--interactive-accent);
+}
+.rt-root .rt-row-resizing,
+.rt-root .rt-row-resizing * {
+  cursor: row-resize !important;
+  user-select: none;
+}
+
+/* Alignment picker */
+
+.rt-align-pop {
+  position: fixed;
+  z-index: var(--layer-menu, 65);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  box-shadow: var(--shadow-s);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rt-align-pop .rt-align-tabs {
+  display: flex;
+  gap: 4px;
+}
+.rt-align-pop .rt-align-tabs button,
+.rt-align-pop .rt-align-footer button {
+  flex: 1;
+  font-size: var(--font-ui-smaller);
+  padding: 2px 8px;
+  height: auto;
+}
+.rt-align-pop .rt-align-tabs button.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.rt-align-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 36px);
+  grid-auto-rows: 30px;
+  gap: 4px;
+  justify-content: center;
+}
+.rt-align-btn {
+  display: flex;
+  padding: 4px;
+  height: 100%;
+  width: 100%;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  box-shadow: none;
+}
+.rt-align-btn:hover {
+  background: var(--background-modifier-hover);
+}
+.rt-align-btn.is-active {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+}
+.rt-align-lines {
+  width: 14px;
+  height: 8px;
+  background:
+    linear-gradient(var(--text-muted), var(--text-muted)) 0 0 / 100% 2px no-repeat,
+    linear-gradient(var(--text-muted), var(--text-muted)) 0 100% / 70% 2px no-repeat;
+}
+.rt-align-btn.is-active .rt-align-lines {
+  background:
+    linear-gradient(var(--interactive-accent), var(--interactive-accent)) 0 0 / 100% 2px no-repeat,
+    linear-gradient(var(--interactive-accent), var(--interactive-accent)) 0 100% / 70% 2px no-repeat;
+}
+
+/* Selection toolbar */
+
+.rt-root .rt-painting .rt-cell,
+.rt-root .rt-painting .rt-grip {
+  cursor: copy;
+}
+
+.rt-toolbar {
+  position: fixed;
+  z-index: var(--layer-menu, 65);
+}
+.rt-toolbar .rt-tb-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 4px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  box-shadow: var(--shadow-s);
+  white-space: nowrap;
+}
+.rt-toolbar .rt-tb-handle {
+  display: flex;
+  align-items: center;
+  color: var(--text-faint);
+  cursor: grab;
+  padding: 0 1px;
+  touch-action: none;
+}
+.rt-toolbar .rt-tb-handle:hover {
+  color: var(--text-normal);
+}
+.rt-toolbar.is-dragging .rt-tb-handle {
+  cursor: grabbing;
+}
+.rt-toolbar.is-floating .rt-tb-bar {
+  box-shadow: var(--shadow-l, var(--shadow-s));
+}
+.rt-toolbar .rt-tb-label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+.rt-toolbar .rt-tb-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 2px;
+  background: var(--background-modifier-border);
+}
+.rt-toolbar .rt-tb-btn {
+  position: relative;
+  padding: 4px;
+  width: 28px;
+  height: 28px;
+}
+.rt-toolbar .rt-tb-btn.is-active {
+  background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+  color: var(--interactive-accent);
+}
+.rt-toolbar .rt-tb-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.rt-toolbar .rt-tb-colorbar {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 2px;
+  height: 3px;
+  border-radius: 1px;
+}
+.rt-toolbar .rt-tb-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  box-shadow: var(--shadow-s);
+}
+.rt-toolbar .rt-tb-panel.is-up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+.rt-toolbar .rt-panel-clear {
+  font-size: var(--font-ui-smaller);
+  padding: 2px 8px;
+  height: auto;
+}
+.rt-toolbar .rt-options {
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+}
+.rt-toolbar .rt-option {
+  justify-content: flex-start;
+  background: transparent;
+  box-shadow: none;
+  padding: 4px 8px;
+  height: auto;
+}
+.rt-toolbar .rt-option:hover {
+  background: var(--background-modifier-hover);
+}
+.rt-toolbar .rt-option.is-active {
+  color: var(--interactive-accent);
+  font-weight: 600;
+}
+.rt-toolbar .rt-font-name {
+  width: 220px;
+}
+.rt-toolbar .rt-font-name.is-invalid {
+  border-color: var(--text-error);
+}
+
+/* Color swatches */
+
+.rt-swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 22px);
+  gap: 6px;
+}
+.rt-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.rt-swatch.is-active {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 1px;
+}
+.rt-swatch-none {
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--text-error) 50%, transparent calc(50% + 1px)), var(--background-primary);
+}
+.rt-swatch-custom {
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.rt-swatch-custom::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.rt-swatch-custom::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+  opacity: 0;
+}
+.rt-swatch-custom.is-active::-webkit-color-swatch {
+  opacity: 1;
+}

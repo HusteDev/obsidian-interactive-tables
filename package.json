@@ -1,0 +1,22 @@
+{
+  "name": "interactive-tables",
+  "version": "0.1.0",
+  "description": "Interactive tables with drag-and-drop, resizable columns, spans and full markdown in cells.",
+  "main": "main.js",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "node --experimental-strip-types test/model.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.21.5",
+    "obsidian": "latest",
+    "tslib": "^2.6.0",
+    "typescript": "^5.4.0"
+  }
+}

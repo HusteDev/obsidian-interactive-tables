@@ -1,0 +1,10 @@
+{
+  "id": "interactive-tables",
+  "name": "Interactive Tables",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Interactive tables with drag-and-drop rows and columns, resizable columns, merged cells and full markdown in cells.",
+  "author": "HusteDev",
+  "authorUrl": "https://github.com/HusteDev",
+  "isDesktopOnly": false
+}
