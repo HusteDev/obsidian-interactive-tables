@@ -105,6 +105,14 @@ export class RichTableView extends MarkdownRenderChild {
     }
   }
 
+  private get doc(): Document {
+    return this.containerEl.ownerDocument;
+  }
+
+  private get win(): Window {
+    return this.containerEl.ownerDocument.defaultView ?? window;
+  }
+
   onload(): void {
     this.render();
   }
@@ -592,8 +600,8 @@ export class RichTableView extends MarkdownRenderChild {
   /** Place `pop` beside the pointer, kept on screen. Esc or a click outside closes it, then `onClose` runs. */
   private showPopover(evt: MouseEvent, pop: HTMLElement, onClose?: () => void): void {
     const rect = pop.getBoundingClientRect();
-    const x = Math.min(evt.clientX, window.innerWidth - rect.width - 8);
-    const y = Math.min(evt.clientY, window.innerHeight - rect.height - 8);
+    const x = Math.min(evt.clientX, this.win.innerWidth - rect.width - 8);
+    const y = Math.min(evt.clientY, this.win.innerHeight - rect.height - 8);
     pop.style.left = Math.max(8, x) + "px";
     pop.style.top = Math.max(8, y) + "px";
 
@@ -604,15 +612,15 @@ export class RichTableView extends MarkdownRenderChild {
       if (e.key === "Escape") this.closePopover();
     };
     this.popoverDone = () => {
-      document.removeEventListener("mousedown", outside, true);
-      document.removeEventListener("keydown", key, true);
+      this.doc.removeEventListener("mousedown", outside, true);
+      this.doc.removeEventListener("keydown", key, true);
       onClose?.();
     };
     // Defer so the click that opened the popover doesn't close it.
-    window.setTimeout(() => {
+    this.win.setTimeout(() => {
       if (this.popover !== pop) return;
-      document.addEventListener("mousedown", outside, true);
-      document.addEventListener("keydown", key, true);
+      this.doc.addEventListener("mousedown", outside, true);
+      this.doc.addEventListener("keydown", key, true);
     });
   }
 
@@ -625,7 +633,7 @@ export class RichTableView extends MarkdownRenderChild {
    */
   private alignPopover(evt: MouseEvent, scope: AlignScope, cell?: Cell, row?: number, col?: number): void {
     this.closePopover();
-    const pop = document.body.createDiv({ cls: "rt-align-pop" });
+    const pop = this.doc.body.createDiv({ cls: "rt-align-pop" });
     this.popover = pop;
 
     const s = this.selRect();
@@ -798,7 +806,7 @@ export class RichTableView extends MarkdownRenderChild {
 
   private showToolbar(): void {
     if (!this.toolbar) {
-      const tb = new TableToolbar(this.toolbarHost());
+      const tb = new TableToolbar(this.toolbarHost(), this.doc, this.app);
       this.toolbar = tb;
       const outside = (e: MouseEvent) => {
         const t = e.target as HTMLElement;
@@ -819,30 +827,30 @@ export class RichTableView extends MarkdownRenderChild {
       const follow = () => {
         if (queued) return;
         queued = true;
-        window.requestAnimationFrame(() => {
+        this.win.requestAnimationFrame(() => {
           queued = false;
           this.toolbar?.place();
         });
       };
       const clip = (e: ClipboardEvent) => this.onClipboard(e);
-      document.addEventListener("mousedown", outside, true);
-      document.addEventListener("keydown", key, true);
-      document.addEventListener("scroll", follow, true);
-      window.addEventListener("resize", follow);
-      for (const ev of ["copy", "cut", "paste"] as const) document.addEventListener(ev, clip, true);
+      this.doc.addEventListener("mousedown", outside, true);
+      this.doc.addEventListener("keydown", key, true);
+      this.doc.addEventListener("scroll", follow, true);
+      this.win.addEventListener("resize", follow);
+      for (const ev of ["copy", "cut", "paste"] as const) this.doc.addEventListener(ev, clip, true);
       this.toolbarOff = () => {
-        document.removeEventListener("mousedown", outside, true);
-        document.removeEventListener("keydown", key, true);
-        document.removeEventListener("scroll", follow, true);
-        window.removeEventListener("resize", follow);
-        for (const ev of ["copy", "cut", "paste"] as const) document.removeEventListener(ev, clip, true);
+        this.doc.removeEventListener("mousedown", outside, true);
+        this.doc.removeEventListener("keydown", key, true);
+        this.doc.removeEventListener("scroll", follow, true);
+        this.win.removeEventListener("resize", follow);
+        for (const ev of ["copy", "cut", "paste"] as const) this.doc.removeEventListener(ev, clip, true);
       };
     }
     this.toolbar.refresh();
     this.toolbar.place();
     // A freshly rebuilt table may not be laid out yet.
-    window.requestAnimationFrame(() => this.toolbar?.place());
-    window.setTimeout(() => this.toolbar?.place(), 150);
+    this.win.requestAnimationFrame(() => this.toolbar?.place());
+    this.win.setTimeout(() => this.toolbar?.place(), 150);
   }
 
   private hideToolbar(): void {
@@ -861,9 +869,9 @@ export class RichTableView extends MarkdownRenderChild {
   private onClipboard(e: ClipboardEvent): void {
     const s = this.selRect();
     if (!s || this.editing || !e.clipboardData) return;
-    const focus = document.activeElement;
+    const focus = this.doc.activeElement;
     if (focus instanceof HTMLInputElement || focus instanceof HTMLTextAreaElement) return;
-    const sel = window.getSelection();
+    const sel = this.win.getSelection();
     if (sel && !sel.isCollapsed && sel.toString().trim()) return;
     e.preventDefault();
     e.stopPropagation();
@@ -972,6 +980,15 @@ export class RichTableView extends MarkdownRenderChild {
       return;
     }
     const { lineStart, lineEnd } = info;
+    if (body.split("\n").some((l) => /^\s*(```|~~~)/.test(l))) {
+      new Notice("Interactive Tables: a cell would close the table's code fence, so the change wasn't saved.");
+      return;
+    }
+    // The text we believe is in the note; refuse to write over anything else.
+    const expected = this.source.replace(/\r/g, "").trim();
+    const matches = (lines: string[], at: number, end: number) =>
+      /^\s*(```|~~~)/.test(lines[at] ?? "") && lines.slice(at + 1, end).join("\n").replace(/\r/g, "").trim() === expected;
+    const stale = () => new Notice("Interactive Tables: the note changed underneath the table; change not saved.");
     this.source = body;
     RichTableView.carry = { path: this.ctx.sourcePath, body, selection: this.selection, painter: this.painter, at: Date.now() };
 
@@ -982,15 +999,21 @@ export class RichTableView extends MarkdownRenderChild {
       .find((v): v is MarkdownView => v instanceof MarkdownView && v.file?.path === file.path && v.getMode() === "source");
     if (view) {
       const editor = view.editor;
-      if (/^\s*(```|~~~)/.test(editor.getLine(lineStart))) {
-        editor.replaceRange(body + "\n", { line: lineStart + 1, ch: 0 }, { line: lineEnd, ch: 0 });
+      const lines: string[] = [];
+      for (let n = 0; n <= Math.min(lineEnd, editor.lineCount() - 1); n++) lines.push(editor.getLine(n));
+      if (!matches(lines, lineStart, lineEnd)) {
+        RichTableView.carry = null;
+        stale();
         return;
       }
+      editor.replaceRange(body + "\n", { line: lineStart + 1, ch: 0 }, { line: lineEnd, ch: 0 });
+      return;
     }
     await this.app.vault.process(file, (data) => {
       const lines = data.split("\n");
-      if (!/^\s*(```|~~~)/.test(lines[lineStart] ?? "")) {
-        new Notice("Interactive Tables: the note changed underneath the table; change not saved.");
+      if (!matches(lines, lineStart, lineEnd)) {
+        RichTableView.carry = null;
+        stale();
         return data;
       }
       lines.splice(lineStart + 1, lineEnd - lineStart - 1, ...body.split("\n"));

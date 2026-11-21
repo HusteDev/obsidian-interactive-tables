@@ -2,7 +2,7 @@
  * Floating formatting toolbar shown above a table's selection. It knows nothing
  * about tables: the view supplies the current state and carries out each action.
  */
-import { setIcon } from "obsidian";
+import { App, setIcon } from "obsidian";
 import { Align, CellStyle, FontSize, VAlign, isFontName } from "./model";
 import { FONT_OPTIONS, FONTS, SIZE_OPTIONS, alignGrid, colorCss, fontCss, optionList, swatchStrip } from "./format";
 
@@ -35,19 +35,18 @@ type Panel = "bg" | "color" | "size" | "font" | "align";
 /** Where the user dragged the toolbar, shared by every table; absent means docked above the table. */
 const POS_KEY = "interactive-tables:toolbar-pos";
 
-function loadPos(): { x: number; y: number } | null {
+function loadPos(app: App): { x: number; y: number } | null {
   try {
-    const v = JSON.parse(window.localStorage.getItem(POS_KEY) ?? "null");
+    const v = app.loadLocalStorage(POS_KEY) as { x: number; y: number } | null;
     return v && Number.isFinite(v.x) && Number.isFinite(v.y) ? v : null;
   } catch {
     return null;
   }
 }
 
-function savePos(v: { x: number; y: number } | null): void {
+function savePos(app: App, v: { x: number; y: number } | null): void {
   try {
-    if (v) window.localStorage.setItem(POS_KEY, JSON.stringify(v));
-    else window.localStorage.removeItem(POS_KEY);
+    app.saveLocalStorage(POS_KEY, v);
   } catch {
     // Storage unavailable: the position just isn't remembered.
   }
@@ -57,12 +56,16 @@ export class TableToolbar {
   readonly el: HTMLElement;
   private open: Panel | null = null;
 
-  constructor(private host: ToolbarHost) {
-    this.el = document.body.createDiv({ cls: "rt-toolbar" });
+  constructor(private host: ToolbarHost, private doc: Document, private app: App) {
+    this.el = doc.body.createDiv({ cls: "rt-toolbar" });
     // Keep focus where it is when a button is pressed; inputs still take focus.
     this.el.addEventListener("mousedown", (e) => {
       if ((e.target as HTMLElement).closest("button")) e.preventDefault();
     });
+  }
+
+  private get win(): Window {
+    return this.doc.defaultView ?? window;
   }
 
   destroy(): void {
@@ -201,7 +204,7 @@ export class TableToolbar {
         this.el.removeClass("is-dragging");
         // A click without movement leaves a docked toolbar docked.
         if (Math.abs(ev.clientX - e.clientX) + Math.abs(ev.clientY - e.clientY) < 4) return;
-        savePos({ x: ev.clientX - dx, y: ev.clientY - dy });
+        savePos(this.app, { x: ev.clientX - dx, y: ev.clientY - dy });
         this.place();
       };
       handle.addEventListener("pointermove", move);
@@ -209,7 +212,7 @@ export class TableToolbar {
       handle.addEventListener("pointercancel", up);
     });
     handle.addEventListener("dblclick", () => {
-      savePos(null);
+      savePos(this.app, null);
       this.place();
     });
   }
@@ -225,26 +228,26 @@ export class TableToolbar {
     const w = bar?.offsetWidth ?? 0;
     const h = bar?.offsetHeight ?? 0;
     const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, hi));
-    const pos = loadPos();
+    const pos = loadPos(this.app);
     this.el.toggleClass("is-floating", !!pos);
     let top: number;
     let left: number;
     if (pos) {
       if (!r) return this.hidden(true);
-      top = clamp(pos.y, 8, window.innerHeight - h - 8);
-      left = clamp(pos.x, 8, window.innerWidth - w - 8);
+      top = clamp(pos.y, 8, this.win.innerHeight - h - 8);
+      left = clamp(pos.x, 8, this.win.innerWidth - w - 8);
     } else {
-      const pane = this.host.bounds() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+      const pane = this.host.bounds() ?? new DOMRect(0, 0, this.win.innerWidth, this.win.innerHeight);
       if (!r || r.bottom < pane.top + h || r.top > pane.bottom) return this.hidden(true);
       top = Math.min(Math.max(r.top - h - 4, pane.top + 4), r.bottom - h);
-      left = clamp(r.left, Math.max(8, pane.left), window.innerWidth - w - 8);
+      left = clamp(r.left, Math.max(8, pane.left), this.win.innerWidth - w - 8);
     }
     this.hidden(false);
     this.el.style.top = top + "px";
     this.el.style.left = left + "px";
     // Open dropdowns upward when there isn't room below.
     const panel = this.el.querySelector<HTMLElement>(".rt-tb-panel");
-    panel?.toggleClass("is-up", top + h + panel.offsetHeight + 12 > window.innerHeight);
+    panel?.toggleClass("is-up", top + h + panel.offsetHeight + 12 > this.win.innerHeight);
   }
 
   private hidden(on: boolean): void {

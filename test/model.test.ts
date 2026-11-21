@@ -182,3 +182,8 @@ assert.equal(pasteGrid(cb, 1, 0, [["W", "skip", "X"], ["A", "Y", "Z", "off"]]), 
 assert.deepEqual(copyGrid(cb, 1, 0, 2, 2), [["W", "", "X"], ["A", "Y", "Z"]]);
 assert.equal(pasteGrid(cb, 2, 2, [["1", "2"], ["3"]]), 1);
 console.log("clipboard tests passed");
+
+// A cell holding a code fence is stored on one line, so it can never close the surrounding rtable fence.
+const fenced = parse("| a | b |\n|---|---|\n| x<br>```<br>code<br>``` | y |");
+assert.equal(serialize(fenced).split("\n").some((l) => /^\s*(```|~~~)/.test(l)), false);
+console.log("fence tests passed");

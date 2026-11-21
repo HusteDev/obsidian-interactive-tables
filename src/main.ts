@@ -22,12 +22,12 @@ export default class RichTablesPlugin extends Plugin {
 
     this.addCommand({
       id: "insert",
-      name: "Insert rich table",
+      name: "Insert interactive table",
       editorCallback: (editor) => this.insert(editor),
     });
     this.addCommand({
       id: "convert-to-rich",
-      name: "Convert markdown table at cursor to rich table",
+      name: "Convert markdown table at cursor to interactive table",
       editorCheckCallback: (checking, editor) => {
         const range = this.findPipeTable(editor);
         if (checking) return !!range;
@@ -37,7 +37,7 @@ export default class RichTablesPlugin extends Plugin {
     });
     this.addCommand({
       id: "convert-all-to-rich",
-      name: "Convert all markdown tables in this note to rich tables",
+      name: "Convert all markdown tables in this note to interactive tables",
       editorCallback: (editor) => {
         const tables = this.findAllPipeTables(editor);
         // Bottom-up so earlier line numbers stay valid.
@@ -47,7 +47,7 @@ export default class RichTablesPlugin extends Plugin {
     });
     this.addCommand({
       id: "convert-to-plain",
-      name: "Convert rich table at cursor to plain markdown table",
+      name: "Convert interactive table at cursor to plain markdown table",
       editorCheckCallback: (checking, editor) => {
         const range = this.findFence(editor);
         if (checking) return !!range;
@@ -58,10 +58,10 @@ export default class RichTablesPlugin extends Plugin {
 
     this.registerEvent(
       this.app.workspace.on("editor-menu", (menu: Menu, editor: Editor) => {
-        menu.addItem((i) => i.setTitle("Insert rich table").setIcon("table").onClick(() => this.insert(editor)));
+        menu.addItem((i) => i.setTitle("Insert interactive table").setIcon("table").onClick(() => this.insert(editor)));
         if (this.findPipeTable(editor)) {
           menu.addItem((i) =>
-            i.setTitle("Convert to rich table").setIcon("table").onClick(() => {
+            i.setTitle("Convert to interactive table").setIcon("table").onClick(() => {
               const r = this.findPipeTable(editor);
               if (r) this.toRich(editor, r);
             })
