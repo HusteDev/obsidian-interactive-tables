@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   applyLook, deleteCol, deleteRow, effectiveAlign, effectiveStyle, insertCol, insertRow, lookOf, mergeRange, moveCol, moveRow,
-  parse, parseStyle, serialize, setAlign, setStyle, splitCell, copyGrid, gridToTsv, tsvToGrid, pasteGrid,
+  parse, parseStyle, serialize, setAlign, setStyle, splitCell, copyGrid, gridToTsv, tsvToGrid, pasteGrid, stepFrom,
 } from "../src/model.ts";
 
 const src = [
@@ -187,3 +187,14 @@ console.log("clipboard tests passed");
 const fenced = parse("| a | b |\n|---|---|\n| x<br>```<br>code<br>``` | y |");
 assert.equal(serialize(fenced).split("\n").some((l) => /^\s*(```|~~~)/.test(l)), false);
 console.log("fence tests passed");
+
+// Keyboard stepping skips over spans and stops at the edges.
+const nav = parse(["| h1 | h2 | h3 |", "|----|----|----|", "| wide | < | x |", "| tall | y | z |", "| ^ | q | r |"].join("\n"));
+const navWide = nav.cells.find((x) => x.text === "wide")!;
+assert.equal(stepFrom(nav, navWide, "right")!.text, "x");
+assert.equal(stepFrom(nav, nav.cells.find((x) => x.text === "x")!, "left")!.text, "wide");
+const navTall = nav.cells.find((x) => x.text === "tall")!;
+assert.equal(stepFrom(nav, navTall, "down"), undefined);
+assert.equal(stepFrom(nav, navTall, "up")!.text, "wide");
+assert.equal(stepFrom(nav, nav.cells.find((x) => x.text === "h1")!, "up"), undefined);
+console.log("navigation tests passed");

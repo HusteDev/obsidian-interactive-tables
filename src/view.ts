@@ -39,8 +39,10 @@ import {
   gridToTsv,
   tsvToGrid,
   pasteGrid,
+  stepFrom,
 } from "./model";
 import { alignGrid, applyStyle } from "./format";
+import type { Dir } from "./model";
 import { TableToolbar, ToolbarHost, ToolbarState } from "./toolbar";
 
 /** Clipboard type carrying an exact grid between rich tables, alongside the plain text. */
@@ -305,15 +307,16 @@ export class RichTableView extends MarkdownRenderChild {
     ).length > 1;
   }
 
-  private startEdit(cell: Cell): void {
+  private startEdit(cell: Cell, initial?: string): void {
     if (this.editing) this.commitEdit(false);
+    this.selection = { r0: cell.r, c0: cell.c, r1: cell.r + cell.rs - 1, c1: cell.c + cell.cs - 1, scope: "cell" };
     this.hideToolbar();
     const td = this.cellEls.get(cell);
     if (!td) return;
     td.empty();
     td.addClass("rt-editing");
     const area = td.createEl("textarea", { cls: "rt-editor" });
-    area.value = cell.text;
+    area.value = initial ?? cell.text;
     const fit = () => {
       area.style.height = "auto";
       area.style.height = area.scrollHeight + "px";
@@ -329,9 +332,14 @@ export class RichTableView extends MarkdownRenderChild {
         this.editing = null;
         td.removeClass("rt-editing");
         this.renderCell(cell);
+        this.paintSelection();
       } else if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
+        // Like a spreadsheet: Enter moves down, Shift+Enter is a line break (handled by the textarea).
+        const below = stepFrom(this.model, cell, "down") ?? cell;
+        this.selection = { r0: below.r, c0: below.c, r1: below.r + below.rs - 1, c1: below.c + below.cs - 1, scope: "cell" };
         this.commitEdit(true);
+        this.paintSelection();
       } else if (e.key === "Tab") {
         e.preventDefault();
         const next = this.neighbourCell(cell, e.shiftKey ? -1 : 1);
@@ -365,6 +373,53 @@ export class RichTableView extends MarkdownRenderChild {
   private neighbourCell(cell: Cell, dir: 1 | -1): Cell | undefined {
     const order = [...this.model.cells].sort((a, b) => a.r - b.r || a.c - b.c);
     return order[order.indexOf(cell) + dir];
+  }
+
+  /** Spreadsheet-style keys for the selected cell: arrows, Tab, Enter/F2, Delete, or just start typing. */
+  private onNavKey(e: KeyboardEvent): void {
+    const s = this.selRect();
+    if (!s || s.scope !== "cell" || this.editing || this.popover || e.isComposing) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const focus = this.doc.activeElement;
+    if (focus instanceof HTMLInputElement || focus instanceof HTMLTextAreaElement || focus instanceof HTMLSelectElement) return;
+    // The active end of the selection, which is where arrows move from and Shift+arrows extend.
+    const end = this.selection!;
+    const active = cellAt(this.model, end.r1, end.c1);
+    if (!active) return;
+    const eat = () => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const go = (to: Cell | undefined, extend: boolean) => {
+      eat();
+      if (!to) return;
+      const cur = this.selection!;
+      this.selection = extend
+        ? { ...cur, r1: to.r + to.rs - 1 > cur.r0 ? to.r + to.rs - 1 : to.r, c1: to.c + to.cs - 1 > cur.c0 ? to.c + to.cs - 1 : to.c, scope: "cell" }
+        : { r0: to.r, c0: to.c, r1: to.r + to.rs - 1, c1: to.c + to.cs - 1, scope: "cell" };
+      this.paintSelection();
+      this.cellEls.get(to)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    };
+    const arrows: Record<string, Dir> = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+    if (e.key in arrows) {
+      go(stepFrom(this.model, active, arrows[e.key]), e.shiftKey);
+    } else if (e.key === "Tab") {
+      go(this.neighbourCell(active, e.shiftKey ? -1 : 1), false);
+    } else if (e.key === "Enter" || e.key === "F2") {
+      eat();
+      this.startEdit(active);
+    } else if (e.key === "Delete" || e.key === "Backspace") {
+      eat();
+      this.apply((m) => {
+        for (const c of this.cellsIn(s)) {
+          const mc = cellAt(m, c.r, c.c);
+          if (mc) mc.text = "";
+        }
+      });
+    } else if (e.key.length === 1) {
+      eat();
+      this.startEdit(active, e.key);
+    }
   }
 
   /* ---------- menus ---------- */
@@ -817,7 +872,11 @@ export class RichTableView extends MarkdownRenderChild {
         this.paintSelection();
       };
       const key = (e: KeyboardEvent) => {
-        if (e.key !== "Escape" || this.editing || this.popover) return;
+        if (e.key !== "Escape") {
+          this.onNavKey(e);
+          return;
+        }
+        if (this.editing || this.popover) return;
         if (tb.closePanel()) return;
         if (this.painter) this.painter = null;
         else this.selection = null;

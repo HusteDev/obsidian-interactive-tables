@@ -501,6 +501,16 @@ export function cellAt(m: TableModel, r: number, c: number): Cell | undefined {
   return m.cells.find((x) => r >= x.r && r < x.r + x.rs && c >= x.c && c < x.c + x.cs);
 }
 
+export type Dir = "up" | "down" | "left" | "right";
+
+/** The cell one step from `from` in a direction, stepping over its span; undefined at the table's edge. */
+export function stepFrom(m: TableModel, from: Cell, dir: Dir): Cell | undefined {
+  const r = dir === "up" ? from.r - 1 : dir === "down" ? from.r + from.rs : from.r;
+  const c = dir === "left" ? from.c - 1 : dir === "right" ? from.c + from.cs : from.c;
+  if (r < 0 || c < 0 || r >= m.rows || c >= m.cols) return undefined;
+  return cellAt(m, r, c);
+}
+
 /* ---------- clipboard ---------- */
 
 /** Cell texts in a block, one entry per grid position. A merged cell's text appears once, at its first position in the block. */
