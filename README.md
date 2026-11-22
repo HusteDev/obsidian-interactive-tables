@@ -71,3 +71,7 @@ npm test        # table model tests
 ```
 
 Only `main.js`, `manifest.json` and `styles.css` are needed at runtime; `node_modules`, `src` and `test` can be deleted if you don't plan to rebuild.
+
+## Settings
+
+Settings, Community plugins, Interactive Tables: the size of a newly inserted table, and whether Enter moves to the cell below while editing.

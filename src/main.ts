@@ -1,23 +1,35 @@
 import { Editor, Menu, Notice, Plugin } from "obsidian";
 import { hasStyle, isSeparatorRow, parse, pipeTable } from "./model";
 import { RichTableView } from "./view";
+import { DEFAULT_SETTINGS, InteractiveTablesSettingTab, Settings, sanitize } from "./settings";
 
 export const FENCE = "rtable";
 
-const TEMPLATE = [
-  "```" + FENCE,
-  "| Column 1 | Column 2 | Column 3 |",
-  "| -------- | -------- | -------- |",
-  "|          |          |          |",
-  "|          |          |          |",
-  "```",
-  "",
-].join("\n");
+function template(cols: number, rows: number): string {
+  const row = (cell: (i: number) => string) => "| " + Array.from({ length: cols }, (_, i) => cell(i)).join(" | ") + " |";
+  return [
+    "```" + FENCE,
+    row((i) => `Column ${i + 1}`),
+    row(() => "--------"),
+    ...Array.from({ length: rows }, () => row(() => "        ")),
+    "```",
+    "",
+  ].join("\n");
+}
 
 export default class RichTablesPlugin extends Plugin {
+  settings: Settings = { ...DEFAULT_SETTINGS };
+
+  async saveSettings(): Promise<void> {
+    await this.saveData(this.settings);
+  }
+
   async onload(): Promise<void> {
+    this.settings = sanitize((await this.loadData()) as Partial<Settings> | null);
+    this.addSettingTab(new InteractiveTablesSettingTab(this.app, this));
+
     this.registerMarkdownCodeBlockProcessor(FENCE, (source, el, ctx) => {
-      ctx.addChild(new RichTableView(this.app, el, source, ctx));
+      ctx.addChild(new RichTableView(this.app, el, source, ctx, () => this.settings));
     });
 
     this.addCommand({
@@ -74,7 +86,7 @@ export default class RichTablesPlugin extends Plugin {
   private insert(editor: Editor): void {
     const cur = editor.getCursor();
     const prefix = editor.getLine(cur.line).trim() ? "\n\n" : "";
-    editor.replaceSelection(prefix + TEMPLATE);
+    editor.replaceSelection(prefix + template(this.settings.cols, this.settings.rows));
   }
 
   private findPipeTable(editor: Editor): { from: number; to: number } | null {

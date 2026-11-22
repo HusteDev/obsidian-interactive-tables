@@ -43,6 +43,7 @@ import {
 } from "./model";
 import { alignGrid, applyStyle } from "./format";
 import type { Dir } from "./model";
+import type { Settings } from "./settings";
 import { TableToolbar, ToolbarHost, ToolbarState } from "./toolbar";
 
 /** Clipboard type carrying an exact grid between rich tables, alongside the plain text. */
@@ -95,7 +96,8 @@ export class RichTableView extends MarkdownRenderChild {
     private app: App,
     containerEl: HTMLElement,
     private source: string,
-    private ctx: MarkdownPostProcessorContext
+    private ctx: MarkdownPostProcessorContext,
+    private settings: () => Settings
   ) {
     super(containerEl);
     this.model = parse(source);
@@ -336,7 +338,7 @@ export class RichTableView extends MarkdownRenderChild {
       } else if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         // Like a spreadsheet: Enter moves down, Shift+Enter is a line break (handled by the textarea).
-        const below = stepFrom(this.model, cell, "down") ?? cell;
+        const below = (this.settings().enterMovesDown && stepFrom(this.model, cell, "down")) || cell;
         this.selection = { r0: below.r, c0: below.c, r1: below.r + below.rs - 1, c1: below.c + below.cs - 1, scope: "cell" };
         this.commitEdit(true);
         this.paintSelection();
