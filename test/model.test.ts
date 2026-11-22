@@ -3,6 +3,7 @@ import {
   applyLook, deleteCol, deleteRow, effectiveAlign, effectiveStyle, insertCol, insertRow, lookOf, mergeRange, moveCol, moveRow,
   parse, parseStyle, serialize, setAlign, setStyle, splitCell, copyGrid, gridToTsv, tsvToGrid, pasteGrid, stepFrom,
 } from "../src/model.ts";
+import { fencePrefix, isFenceLine, prefixOf, stripPrefix } from "../src/fence.ts";
 
 const src = [
   "widths: 100, auto, 200",
@@ -198,3 +199,14 @@ assert.equal(stepFrom(nav, navTall, "down"), undefined);
 assert.equal(stepFrom(nav, navTall, "up")!.text, "wide");
 assert.equal(stepFrom(nav, nav.cells.find((x) => x.text === "h1")!, "up"), undefined);
 console.log("navigation tests passed");
+
+// Fences inside callouts and list items keep their quote/indent prefix.
+assert.equal(fencePrefix("> ```rtable"), "> ");
+assert.equal(fencePrefix(">> ```rtable"), ">> ");
+assert.equal(fencePrefix("    ```rtable"), "    ");
+assert.equal(fencePrefix("| a |"), null);
+assert.equal(isFenceLine("> > ~~~"), true);
+assert.equal(stripPrefix("> | a | b |"), "| a | b |");
+assert.equal(prefixOf(">   | a |"), ">   ");
+assert.equal(prefixOf("| a |"), "");
+console.log("fence prefix tests passed");

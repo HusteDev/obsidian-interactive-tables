@@ -43,6 +43,7 @@ import {
 } from "./model";
 import { alignGrid, applyStyle } from "./format";
 import type { Dir } from "./model";
+import { fencePrefix, isFenceLine, stripPrefix } from "./fence";
 import type { Settings } from "./settings";
 import { TableToolbar, ToolbarHost, ToolbarState } from "./toolbar";
 
@@ -1048,7 +1049,8 @@ export class RichTableView extends MarkdownRenderChild {
     // The text we believe is in the note; refuse to write over anything else.
     const expected = this.source.replace(/\r/g, "").trim();
     const matches = (lines: string[], at: number, end: number) =>
-      /^\s*(```|~~~)/.test(lines[at] ?? "") && lines.slice(at + 1, end).join("\n").replace(/\r/g, "").trim() === expected;
+      isFenceLine(lines[at] ?? "") &&
+      lines.slice(at + 1, end).map(stripPrefix).join("\n").replace(/\r/g, "").trim() === expected;
     const stale = () => new Notice("Interactive Tables: the note changed underneath the table; change not saved.");
     this.source = body;
     RichTableView.carry = { path: this.ctx.sourcePath, body, selection: this.selection, painter: this.painter, at: Date.now() };
@@ -1067,7 +1069,8 @@ export class RichTableView extends MarkdownRenderChild {
         stale();
         return;
       }
-      editor.replaceRange(body + "\n", { line: lineStart + 1, ch: 0 }, { line: lineEnd, ch: 0 });
+      const pre = fencePrefix(lines[lineStart]) ?? "";
+      editor.replaceRange(withPrefix(body, pre) + "\n", { line: lineStart + 1, ch: 0 }, { line: lineEnd, ch: 0 });
       return;
     }
     await this.app.vault.process(file, (data) => {
@@ -1077,10 +1080,16 @@ export class RichTableView extends MarkdownRenderChild {
         stale();
         return data;
       }
-      lines.splice(lineStart + 1, lineEnd - lineStart - 1, ...body.split("\n"));
+      const pre = fencePrefix(lines[lineStart]) ?? "";
+      lines.splice(lineStart + 1, lineEnd - lineStart - 1, ...withPrefix(body, pre).split("\n"));
       return lines.join("\n");
     });
   }
+}
+
+/** Each line of a body, behind the quote or indent prefix of its fence. */
+function withPrefix(body: string, prefix: string): string {
+  return prefix ? body.split("\n").map((l) => prefix + l).join("\n") : body;
 }
 
 function range(a: number, b: number): number[] {

@@ -1,5 +1,6 @@
 import { Editor, Menu, Notice, Plugin } from "obsidian";
 import { hasStyle, isSeparatorRow, parse, pipeTable } from "./model";
+import { prefixOf, stripPrefix } from "./fence";
 import { RichTableView } from "./view";
 import { DEFAULT_SETTINGS, InteractiveTablesSettingTab, Settings, sanitize } from "./settings";
 
@@ -90,24 +91,24 @@ export default class RichTablesPlugin extends Plugin {
   }
 
   private findPipeTable(editor: Editor): { from: number; to: number } | null {
-    const isRow = (n: number) => n >= 0 && n < editor.lineCount() && editor.getLine(n).trim().startsWith("|");
+    const isRow = (n: number) => n >= 0 && n < editor.lineCount() && stripPrefix(editor.getLine(n)).startsWith("|");
     const line = editor.getCursor().line;
     if (!isRow(line) || this.findFence(editor)) return null;
     let from = line;
     let to = line;
     while (isRow(from - 1)) from--;
     while (isRow(to + 1)) to++;
-    if (to - from < 1 || !isSeparatorRow(editor.getLine(from + 1))) return null;
+    if (to - from < 1 || !isSeparatorRow(stripPrefix(editor.getLine(from + 1)))) return null;
     return { from, to };
   }
 
   /** Every pipe table outside code fences, top to bottom. */
   private findAllPipeTables(editor: Editor): { from: number; to: number }[] {
     const out: { from: number; to: number }[] = [];
-    const isRow = (n: number) => editor.getLine(n).trim().startsWith("|");
+    const isRow = (n: number) => stripPrefix(editor.getLine(n)).startsWith("|");
     let fence: string | null = null;
     for (let n = 0; n < editor.lineCount(); n++) {
-      const t = editor.getLine(n).trim();
+      const t = stripPrefix(editor.getLine(n)).trim();
       const f = /^(`{3,}|~{3,})/.exec(t);
       if (f) {
         if (!fence) fence = f[1];
@@ -117,7 +118,7 @@ export default class RichTablesPlugin extends Plugin {
       if (fence || !isRow(n)) continue;
       const from = n;
       while (n + 1 < editor.lineCount() && isRow(n + 1)) n++;
-      if (n > from && isSeparatorRow(editor.getLine(from + 1))) out.push({ from, to: n });
+      if (n > from && isSeparatorRow(stripPrefix(editor.getLine(from + 1)))) out.push({ from, to: n });
     }
     return out;
   }
@@ -126,7 +127,7 @@ export default class RichTablesPlugin extends Plugin {
     const line = editor.getCursor().line;
     let from = -1;
     for (let n = line; n >= 0; n--) {
-      const t = editor.getLine(n).trim();
+      const t = stripPrefix(editor.getLine(n)).trim();
       if (t.startsWith("```" + FENCE)) {
         from = n;
         break;
@@ -135,23 +136,25 @@ export default class RichTablesPlugin extends Plugin {
     }
     if (from < 0) return null;
     for (let n = from + 1; n < editor.lineCount(); n++) {
-      if (editor.getLine(n).trim().startsWith("```")) return n >= line ? { from, to: n } : null;
+      if (stripPrefix(editor.getLine(n)).startsWith("```")) return n >= line ? { from, to: n } : null;
     }
     return null;
   }
 
   private toRich(editor: Editor, r: { from: number; to: number }): void {
-    editor.replaceRange("```" + FENCE + "\n", { line: r.from, ch: 0 });
-    editor.replaceRange("\n```", { line: r.to + 1, ch: editor.getLine(r.to + 1).length });
+    const pre = prefixOf(editor.getLine(r.from));
+    editor.replaceRange("\n" + pre + "```", { line: r.to, ch: editor.getLine(r.to).length });
+    editor.replaceRange("```" + FENCE + "\n" + pre, { line: r.from, ch: pre.length });
   }
 
   private toPlain(editor: Editor, r: { from: number; to: number }): void {
     const body: string[] = [];
-    for (let n = r.from + 1; n < r.to; n++) body.push(editor.getLine(n));
+    const pre = prefixOf(editor.getLine(r.from));
+    for (let n = r.from + 1; n < r.to; n++) body.push(stripPrefix(editor.getLine(n)));
     const model = parse(body.join("\n"));
     const merged = model.cells.some((c) => c.rs > 1 || c.cs > 1);
     editor.replaceRange(
-      pipeTable(model, false).join("\n"),
+      pipeTable(model, false).map((l) => pre + l).join("\n"),
       { line: r.from, ch: 0 },
       { line: r.to, ch: editor.getLine(r.to).length }
     );
