@@ -19,6 +19,7 @@ function template(cols: number, rows: number): string {
 }
 
 export default class RichTablesPlugin extends Plugin {
+  private lastContextTarget: Element | null = null;
   settings: Settings = { ...DEFAULT_SETTINGS };
 
   async saveSettings(): Promise<void> {
@@ -69,13 +70,29 @@ export default class RichTablesPlugin extends Plugin {
       },
     });
 
+    // Live Preview draws a pipe table as a widget, so the editor cursor isn't on its lines.
+    // Remember what was right-clicked (this runs before the menu event) to find the table that way.
+    const watch = (doc: Document) =>
+      this.registerDomEvent(
+        doc,
+        "contextmenu",
+        (e) => {
+          this.lastContextTarget = e.target instanceof Element ? e.target : null;
+        },
+        true
+      );
+    watch(activeDocument);
+    this.registerEvent(this.app.workspace.on("window-open", (_w, win) => watch(win.document)));
+
     this.registerEvent(
       this.app.workspace.on("editor-menu", (menu: Menu, editor: Editor) => {
         menu.addItem((i) => i.setTitle("Insert interactive table").setIcon("table").onClick(() => this.insert(editor)));
-        if (this.findPipeTable(editor)) {
+        const found = this.tableUnderPointer(editor) ?? this.findPipeTable(editor);
+        if (found) {
           menu.addItem((i) =>
             i.setTitle("Convert to interactive table").setIcon("table").onClick(() => {
-              const r = this.findPipeTable(editor);
+              // Re-find at click time: the note may have shifted while the menu was open.
+              const r = this.tableUnderPointer(editor) ?? this.findPipeTable(editor);
               if (r) this.toRich(editor, r);
             })
           );
@@ -90,10 +107,29 @@ export default class RichTablesPlugin extends Plugin {
     editor.replaceSelection(prefix + template(this.settings.cols, this.settings.rows));
   }
 
-  private findPipeTable(editor: Editor): { from: number; to: number } | null {
+  /** The pipe table whose rendered widget was right-clicked, if the click was on one. */
+  private tableUnderPointer(editor: Editor): { from: number; to: number } | null {
+    const el = this.lastContextTarget?.closest("table");
+    if (!el || el.closest(".rt-root") || !el.closest(".cm-editor")) return null;
+    const cm = (editor as unknown as { cm?: { posAtDOM(node: Node): number } }).cm;
+    if (!cm) return null;
+    try {
+      const line = editor.offsetToPos(cm.posAtDOM(el)).line;
+      // The widget's position can land on the table's first row or a line next to it.
+      for (const n of [line, line + 1, line - 1]) {
+        const r = this.findPipeTable(editor, n);
+        if (r) return r;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private findPipeTable(editor: Editor, at?: number): { from: number; to: number } | null {
     const isRow = (n: number) => n >= 0 && n < editor.lineCount() && stripPrefix(editor.getLine(n)).startsWith("|");
-    const line = editor.getCursor().line;
-    if (!isRow(line) || this.findFence(editor)) return null;
+    const line = at ?? editor.getCursor().line;
+    if (!isRow(line) || (at === undefined && this.findFence(editor))) return null;
     let from = line;
     let to = line;
     while (isRow(from - 1)) from--;
