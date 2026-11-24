@@ -131,7 +131,7 @@
 
 .rt-root .rt-grip-row {
   width: 16px;
-  margin: 4px auto 0;
+  margin: 0 auto;
   padding: 2px 0;
 }
 
@@ -190,7 +190,7 @@
 
 /* Row resize handle: bottom edge of each row's gutter cell, stretched across the table on hover. */
 .rt-root .rt-row-handle {
-  vertical-align: top;
+  vertical-align: middle;
 }
 .rt-root .rt-row-resizer {
   position: absolute;
@@ -457,4 +457,16 @@
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   white-space: nowrap;
+}
+
+/* Dark themes: --text-faint is too dim against a dark background, so the grips use brighter text. */
+.theme-dark .rt-root .rt-grip {
+  color: var(--text-muted);
+}
+.theme-dark .rt-root .rt-wrap:hover .rt-grip {
+  opacity: 0.9;
+}
+.theme-dark .rt-root .rt-grip:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
 }
