@@ -671,6 +671,14 @@ export class RichTableView extends MarkdownRenderChild {
 
   /* ---------- column resizing ---------- */
 
+  /** Rows or columns a resize applies to: the whole grip selection when the dragged one is part of it. */
+  private resizeTargets(kind: DragKind, index: number): number[] {
+    const s = this.selRect();
+    if (!s || s.scope !== kind) return [index];
+    const [a, b] = kind === "row" ? [s.r0, s.r1] : [s.c0, s.c1];
+    return index >= a && index <= b ? range(a, b) : [index];
+  }
+
   private bindResizer(handle: HTMLElement, c: number): void {
     handle.addEventListener("click", (e) => e.stopPropagation());
     handle.addEventListener("pointerdown", (e) => {
@@ -681,12 +689,14 @@ export class RichTableView extends MarkdownRenderChild {
         this.model.widths = this.handleThs.map((th) => Math.round(th.getBoundingClientRect().width));
         this.applyWidths();
       }
+      const targets = this.resizeTargets("col", c);
       const startX = e.clientX;
       const startW = this.model.widths[c] ?? DEFAULT_WIDTH;
       handle.setPointerCapture(e.pointerId);
       this.wrap.addClass("rt-resizing");
       const move = (ev: PointerEvent) => {
-        this.model.widths[c] = Math.max(MIN_WIDTH, Math.round(startW + ev.clientX - startX));
+        const w = Math.max(MIN_WIDTH, Math.round(startW + ev.clientX - startX));
+        for (const t of targets) this.model.widths[t] = w;
         this.applyWidths();
       };
       const up = () => {
@@ -702,10 +712,11 @@ export class RichTableView extends MarkdownRenderChild {
     });
     handle.addEventListener("dblclick", (e) => {
       e.stopPropagation();
+      const targets = this.resizeTargets("col", c);
       this.apply((m) => {
-        m.widths[c] = null;
+        for (const t of targets) m.widths[t] = null;
         if (m.widths.every((w) => w == null)) return;
-        m.widths[c] = DEFAULT_WIDTH;
+        for (const t of targets) m.widths[t] = DEFAULT_WIDTH;
       });
     });
   }
@@ -1057,14 +1068,17 @@ export class RichTableView extends MarkdownRenderChild {
       e.preventDefault();
       e.stopPropagation();
       const tr = this.rowEls[r];
+      const targets = this.resizeTargets("row", r);
       const startY = e.clientY;
       const startH = this.model.heights[r] ?? Math.round(tr.getBoundingClientRect().height);
       handle.setPointerCapture(e.pointerId);
       this.wrap.addClass("rt-row-resizing");
       const move = (ev: PointerEvent) => {
         const px = Math.max(MIN_HEIGHT, Math.round(startH + ev.clientY - startY));
-        this.model.heights[r] = px;
-        tr.style.height = px + "px";
+        for (const t of targets) {
+          this.model.heights[t] = px;
+          this.rowEls[t].style.height = px + "px";
+        }
       };
       const up = () => {
         handle.removeEventListener("pointermove", move);
@@ -1079,7 +1093,8 @@ export class RichTableView extends MarkdownRenderChild {
     });
     handle.addEventListener("dblclick", (e) => {
       e.stopPropagation();
-      this.apply((m) => { m.heights[r] = null; });
+      const targets = this.resizeTargets("row", r);
+      this.apply((m) => { for (const t of targets) m.heights[t] = null; });
     });
   }
 
