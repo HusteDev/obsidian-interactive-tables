@@ -1,4 +1,4 @@
-import { Editor, Menu, Notice, Plugin } from "obsidian";
+import { Editor, MarkdownView, Menu, Notice, Plugin } from "obsidian";
 import { hasStyle, isSeparatorRow, parse, pipeTable } from "./model";
 import { prefixOf, stripPrefix } from "./fence";
 import { RichTableView } from "./view";
@@ -43,9 +43,9 @@ export default class RichTablesPlugin extends Plugin {
       id: "convert-to-rich",
       name: "Convert markdown table at cursor to interactive table",
       editorCheckCallback: (checking, editor) => {
-        const range = this.findPipeTable(editor);
-        if (checking) return !!range;
-        if (range) this.toRich(editor, range);
+        const found = this.locateTable(editor, activeDocument.activeElement);
+        if (checking) return !!found;
+        if (found) this.toRich(found.editor, found.range);
         return true;
       },
     });
@@ -87,13 +87,13 @@ export default class RichTablesPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on("editor-menu", (menu: Menu, editor: Editor) => {
         menu.addItem((i) => i.setTitle("Insert interactive table").setIcon("table").onClick(() => this.insert(editor)));
-        const found = this.tableUnderPointer(editor) ?? this.findPipeTable(editor);
-        if (found) {
+        const target = this.lastContextTarget;
+        if (this.locateTable(editor, target)) {
           menu.addItem((i) =>
             i.setTitle("Convert to interactive table").setIcon("table").onClick(() => {
               // Re-find at click time: the note may have shifted while the menu was open.
-              const r = this.tableUnderPointer(editor) ?? this.findPipeTable(editor);
-              if (r) this.toRich(editor, r);
+              const found = this.locateTable(editor, target);
+              if (found) this.toRich(found.editor, found.range);
             })
           );
         }
@@ -107,9 +107,19 @@ export default class RichTablesPlugin extends Plugin {
     editor.replaceSelection(prefix + template(this.settings.cols, this.settings.rows));
   }
 
-  /** The pipe table whose rendered widget was right-clicked, if the click was on one. */
-  private tableUnderPointer(editor: Editor): { from: number; to: number } | null {
-    const el = this.lastContextTarget?.closest("table");
+  /**
+   * The note's editor and the pipe table in question. Clicking into a rendered table can hand us
+   * the table cell's own mini-editor, so the note's active editor is used for the lines.
+   */
+  private locateTable(editor: Editor, el: Element | null): { editor: Editor; range: { from: number; to: number } } | null {
+    const ed = this.app.workspace.getActiveViewOfType(MarkdownView)?.editor ?? editor;
+    const range = this.tableFromElement(ed, el) ?? this.findPipeTable(ed);
+    return range ? { editor: ed, range } : null;
+  }
+
+  /** The pipe table whose rendered widget contains `target`, found through the editor's DOM mapping. */
+  private tableFromElement(editor: Editor, target: Element | null): { from: number; to: number } | null {
+    const el = target?.closest("table");
     if (!el || el.closest(".rt-root") || !el.closest(".cm-editor")) return null;
     const cm = (editor as unknown as { cm?: { posAtDOM(node: Node): number } }).cm;
     if (!cm) return null;
@@ -120,10 +130,10 @@ export default class RichTablesPlugin extends Plugin {
         const r = this.findPipeTable(editor, n);
         if (r) return r;
       }
-      return null;
     } catch {
-      return null;
+      // Not a position we can map; fall back to the cursor line.
     }
+    return null;
   }
 
   private findPipeTable(editor: Editor, at?: number): { from: number; to: number } | null {
