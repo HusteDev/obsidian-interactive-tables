@@ -40,6 +40,8 @@ import {
   tsvToGrid,
   pasteGrid,
   stepFrom,
+  sortRows,
+  filterRows,
 } from "./model";
 import { alignGrid, applyStyle } from "./format";
 import type { Dir } from "./model";
@@ -86,12 +88,15 @@ export class RichTableView extends MarkdownRenderChild {
   private toolbar: TableToolbar | null = null;
   private toolbarOff: (() => void) | null = null;
   private painter: Look | null = null;
+  /** Row filter text, or null while the filter bar is closed. Not saved with the table. */
+  private filter: string | null = null;
+  private filterCount: HTMLElement | null = null;
 
   /**
    * Saving rewrites the fence, and Obsidian then rebuilds the table as a new view.
    * The selection and painter ride along to that view, matched by the saved text.
    */
-  private static carry: { path: string; body: string; selection: Selection | null; painter: Look | null; at: number } | null = null;
+  private static carry: { path: string; body: string; selection: Selection | null; painter: Look | null; filter: string | null; at: number } | null = null;
 
   constructor(
     private app: App,
@@ -107,6 +112,7 @@ export class RichTableView extends MarkdownRenderChild {
       RichTableView.carry = null;
       this.selection = k.selection;
       this.painter = k.painter;
+      this.filter = k.filter;
     }
   }
 
@@ -146,6 +152,8 @@ export class RichTableView extends MarkdownRenderChild {
     this.colEls = [];
     this.handleThs = [];
 
+    this.filterCount = null;
+    if (this.filter !== null) this.renderFilterBar(root);
     this.wrap = root.createDiv({ cls: "rt-wrap" });
     // Keep Live Preview from moving the cursor into the block when the table is used.
     this.wrap.addEventListener("mousedown", (e) => e.stopPropagation());
@@ -205,7 +213,57 @@ export class RichTableView extends MarkdownRenderChild {
 
     this.indicator = this.wrap.createDiv({ cls: "rt-drop-indicator" });
     this.bindDropZone();
+    this.applyFilter();
     this.paintSelection();
+  }
+
+  private renderFilterBar(root: HTMLElement): void {
+    const bar = root.createDiv({ cls: "rt-filter-bar" });
+    bar.addEventListener("mousedown", (e) => e.stopPropagation());
+    const input = bar.createEl("input", { cls: "rt-filter-input", attr: { type: "search", placeholder: "Filter rows…", "aria-label": "Filter rows" } });
+    input.value = this.filter ?? "";
+    this.filterCount = bar.createSpan({ cls: "rt-filter-count" });
+    const close = bar.createEl("button", { cls: "rt-filter-close", text: "Clear", attr: { "aria-label": "Clear filter" } });
+    // Keep keys typed here away from Live Preview and the table's own shortcuts.
+    for (const ev of ["keydown", "keyup", "keypress", "beforeinput", "paste", "cut", "copy"]) {
+      input.addEventListener(ev, (e) => e.stopPropagation());
+    }
+    input.addEventListener("input", () => {
+      this.filter = input.value;
+      this.applyFilter();
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") this.closeFilter();
+    });
+    close.addEventListener("click", () => this.closeFilter());
+    if (this.filterFocus) {
+      this.filterFocus = false;
+      this.win.requestAnimationFrame(() => input.focus());
+    }
+  }
+
+  private filterFocus = false;
+
+  private openFilter(): void {
+    this.filter = this.filter ?? "";
+    this.filterFocus = true;
+    this.render();
+  }
+
+  private closeFilter(): void {
+    this.filter = null;
+    this.render();
+  }
+
+  /** Hide the rows the filter rules out. Only changes what's shown, never the note. */
+  private applyFilter(): void {
+    const q = this.filter ?? "";
+    const keep = filterRows(this.model, q);
+    this.rowEls.forEach((tr, r) => (tr.style.display = keep[r] ? "" : "none"));
+    if (this.filterCount) {
+      const shown = keep.slice(1).filter(Boolean).length;
+      this.filterCount.setText(q.trim() ? `${shown} of ${this.model.rows - 1}` : "");
+    }
   }
 
   private applyWidths(): void {
@@ -501,6 +559,13 @@ export class RichTableView extends MarkdownRenderChild {
     menu.addSeparator();
     if (c > 0) menu.addItem((i) => i.setTitle("Move column left").setIcon("chevron-left").onClick(() => this.applyMove("col", c, c - 1)));
     if (c < this.model.cols - 1) menu.addItem((i) => i.setTitle("Move column right").setIcon("chevron-right").onClick(() => this.applyMove("col", c, c + 1)));
+    menu.addSeparator();
+    const sortBy = (dir: "asc" | "desc") => {
+      if (!this.apply((m) => sortRows(m, c, dir))) new Notice("Interactive Tables: nothing to sort, or a merged cell spans several rows.");
+    };
+    menu.addItem((i) => i.setTitle("Sort rows A to Z").setIcon("arrow-down-a-z").onClick(() => sortBy("asc")));
+    menu.addItem((i) => i.setTitle("Sort rows Z to A").setIcon("arrow-down-z-a").onClick(() => sortBy("desc")));
+    menu.addItem((i) => i.setTitle(this.filter === null ? "Filter rows…" : "Clear row filter").setIcon("filter").onClick(() => (this.filter === null ? this.openFilter() : this.closeFilter())));
     menu.addSeparator();
     menu.addItem((i) => i.setTitle("Align column…").setIcon("align-center").onClick(() => this.alignPopover(evt, "col", undefined, undefined, c)));
     if (this.sized())
@@ -1053,7 +1118,7 @@ export class RichTableView extends MarkdownRenderChild {
       lines.slice(at + 1, end).map(stripPrefix).join("\n").replace(/\r/g, "").trim() === expected;
     const stale = () => new Notice("Interactive Tables: the note changed underneath the table; change not saved.");
     this.source = body;
-    RichTableView.carry = { path: this.ctx.sourcePath, body, selection: this.selection, painter: this.painter, at: Date.now() };
+    RichTableView.carry = { path: this.ctx.sourcePath, body, selection: this.selection, painter: this.painter, filter: this.filter, at: Date.now() };
 
     // Prefer the open editor so the change lands in its undo history.
     const view = this.app.workspace

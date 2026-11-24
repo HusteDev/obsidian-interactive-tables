@@ -511,6 +511,71 @@ export function stepFrom(m: TableModel, from: Cell, dir: Dir): Cell | undefined 
   return cellAt(m, r, c);
 }
 
+/* ---------- sort and filter ---------- */
+
+function sortKey(text: string): { num: number | null; str: string } {
+  const t = text.trim();
+  const n = t === "" ? NaN : Number(t.replace(/[,%$€£]/g, ""));
+  return { num: Number.isFinite(n) ? n : null, str: t.toLowerCase() };
+}
+
+/**
+ * Sort the body rows (never the header) by one column. Numbers sort numerically, anything else
+ * alphabetically, empty cells last. Fails when a merged cell spans body rows, since rows can't move apart.
+ */
+export function sortRows(m: TableModel, col: number, dir: "asc" | "desc"): boolean {
+  if (col < 0 || col >= m.cols || m.rows < 3) return false;
+  if (m.cells.some((x) => x.rs > 1 && x.r + x.rs > 1)) return false;
+  const rows = Array.from({ length: m.rows - 1 }, (_, i) => i + 1);
+  const key = new Map(rows.map((r) => [r, sortKey(cellAt(m, r, col)?.text ?? "")]));
+  const sign = dir === "asc" ? 1 : -1;
+  const sorted = [...rows].sort((a, b) => {
+    const x = key.get(a)!;
+    const y = key.get(b)!;
+    const xe = x.str === "";
+    const ye = y.str === "";
+    if (xe || ye) return xe === ye ? a - b : xe ? 1 : -1;
+    let d: number;
+    if (x.num !== null && y.num !== null) d = x.num - y.num;
+    else if (x.num !== null || y.num !== null) d = x.num !== null ? -1 : 1;
+    else d = x.str.localeCompare(y.str, undefined, { numeric: true });
+    return d === 0 ? a - b : d * sign;
+  });
+  if (sorted.every((r, i) => r === i + 1)) return false;
+  const ni: number[] = [0];
+  sorted.forEach((old, pos) => (ni[old] = pos + 1));
+  for (const x of m.cells) x.r = ni[x.r];
+  m.rowAligns = permute(m.rowAligns, ni);
+  m.rowValigns = permute(m.rowValigns, ni);
+  m.heights = permute(m.heights, ni);
+  m.rowStyles = permute(m.rowStyles, ni);
+  fillEmpty(m);
+  return true;
+}
+
+/**
+ * Which rows a text filter keeps: the header always, then any row with a cell containing every
+ * word of the query (case-insensitive). Rows joined by a merged cell stay or go together.
+ */
+export function filterRows(m: TableModel, query: string): boolean[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const keep = Array.from({ length: m.rows }, () => true);
+  if (!words.length) return keep;
+  const group = Array.from({ length: m.rows }, (_, i) => i);
+  const find = (i: number): number => (group[i] === i ? i : (group[i] = find(group[i])));
+  for (const x of m.cells) for (let k = 1; k < x.rs; k++) group[find(x.r + k)] = find(x.r);
+  const hit = new Map<number, boolean>();
+  for (let r = 1; r < m.rows; r++) {
+    const text = m.cells
+      .filter((x) => r >= x.r && r < x.r + x.rs)
+      .map((x) => x.text.toLowerCase())
+      .join(" ");
+    if (words.every((w) => text.includes(w))) hit.set(find(r), true);
+  }
+  for (let r = 1; r < m.rows; r++) keep[r] = hit.has(find(r));
+  return keep;
+}
+
 /* ---------- clipboard ---------- */
 
 /** Cell texts in a block, one entry per grid position. A merged cell's text appears once, at its first position in the block. */

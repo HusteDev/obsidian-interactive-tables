@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   applyLook, deleteCol, deleteRow, effectiveAlign, effectiveStyle, insertCol, insertRow, lookOf, mergeRange, moveCol, moveRow,
-  parse, parseStyle, serialize, setAlign, setStyle, splitCell, copyGrid, gridToTsv, tsvToGrid, pasteGrid, stepFrom,
+  parse, parseStyle, serialize, setAlign, setStyle, splitCell, copyGrid, gridToTsv, tsvToGrid, pasteGrid, stepFrom, sortRows, filterRows,
 } from "../src/model.ts";
 import { fencePrefix, isFenceLine, prefixOf, stripPrefix } from "../src/fence.ts";
 
@@ -210,3 +210,19 @@ assert.equal(stripPrefix("> | a | b |"), "| a | b |");
 assert.equal(prefixOf(">   | a |"), ">   ");
 assert.equal(prefixOf("| a |"), "");
 console.log("fence prefix tests passed");
+
+// Sort keeps the header, orders numbers numerically and empties last, and carries each row's formatting along.
+const so = parse(["row-style: 2=bold", "| name | n |", "|---|---|", "| b | 10 |", "| a | 9 |", "| c |  |", "| d | 100 |"].join("\n"));
+assert.equal(sortRows(so, 1, "asc"), true);
+assert.deepEqual(so.cells.filter((x) => x.c === 0).sort((x, y) => x.r - y.r).map((x) => x.text), ["name", "a", "b", "d", "c"]);
+assert.equal(sortRows(so, 1, "asc"), false);
+assert.equal(sortRows(so, 0, "desc"), true);
+assert.deepEqual(so.cells.filter((x) => x.c === 0).sort((x, y) => x.r - y.r).map((x) => x.text), ["name", "d", "c", "b", "a"]);
+const sp = parse(["| h | h2 |", "|---|---|", "| a | x |", "| ^ | y |"].join("\n"));
+assert.equal(sortRows(sp, 1, "desc"), false);
+// Filter keeps the header, matches every word in any cell, and keeps spanned rows together.
+const fi = parse(["| h | h2 |", "|---|---|", "| apple | red |", "| ^ | round |", "| pear | green |"].join("\n"));
+assert.deepEqual(filterRows(fi, ""), [true, true, true, true]);
+assert.deepEqual(filterRows(fi, "ROUND"), [true, true, true, false]);
+assert.deepEqual(filterRows(fi, "pear green"), [true, false, false, true]);
+console.log("sort and filter tests passed");

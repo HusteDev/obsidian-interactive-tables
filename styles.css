@@ -442,3 +442,19 @@
 .rt-swatch-custom.is-active::-webkit-color-swatch {
   opacity: 1;
 }
+
+.rt-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.rt-filter-input {
+  flex: 1;
+  min-width: 0;
+}
+.rt-filter-count {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
