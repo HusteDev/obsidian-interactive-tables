@@ -20,6 +20,8 @@ import {
   applyLook,
   cellAt,
   cloneModel,
+  hasStyle,
+  pipeTable,
   deleteCol,
   deleteRow,
   effectiveAlign,
@@ -533,6 +535,7 @@ export class RichTableView extends MarkdownRenderChild {
     menu.addSeparator();
     menu.addItem((i) => i.setTitle("Delete row").setIcon("trash").onClick(() => this.apply((m) => deleteRow(m, top))));
     menu.addItem((i) => i.setTitle("Delete column").setIcon("trash").onClick(() => this.apply((m) => deleteCol(m, left))));
+    this.addConvertItem(menu);
     return menu;
   }
 
@@ -549,6 +552,7 @@ export class RichTableView extends MarkdownRenderChild {
       menu.addItem((i) => i.setTitle("Reset row height").setIcon("rotate-ccw").onClick(() => this.apply((m) => { m.heights[r] = null; })));
     menu.addSeparator();
     menu.addItem((i) => i.setTitle("Delete row").setIcon("trash").onClick(() => this.apply((m) => deleteRow(m, r))));
+    this.addConvertItem(menu);
     return menu;
   }
 
@@ -572,6 +576,7 @@ export class RichTableView extends MarkdownRenderChild {
       menu.addItem((i) => i.setTitle("Reset all column widths").setIcon("rotate-ccw").onClick(() => this.apply((m) => { m.widths = m.widths.map(() => null); })));
     menu.addSeparator();
     menu.addItem((i) => i.setTitle("Delete column").setIcon("trash").onClick(() => this.apply((m) => deleteCol(m, c))));
+    this.addConvertItem(menu);
     return menu;
   }
 
@@ -1096,6 +1101,62 @@ export class RichTableView extends MarkdownRenderChild {
       const targets = this.resizeTargets("row", r);
       this.apply((m) => { for (const t of targets) m.heights[t] = null; });
     });
+  }
+
+  /* ---------- convert back to a plain markdown table ---------- */
+
+  private addConvertItem(menu: Menu): void {
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle("Convert to plain markdown table").setIcon("table").onClick(() => void this.convertToPlain()));
+  }
+
+  /** Replace this table's whole code block with an ordinary pipe table. */
+  private async convertToPlain(): Promise<void> {
+    if (this.editing) this.commitEdit(true);
+    const info = this.ctx.getSectionInfo(this.containerEl);
+    const file = this.app.vault.getAbstractFileByPath(this.ctx.sourcePath);
+    if (!info || !(file instanceof TFile)) {
+      new Notice("Interactive Tables: couldn't locate this table in the note, so it wasn't converted.");
+      return;
+    }
+    const { lineStart, lineEnd } = info;
+    const m = this.model;
+    const expected = this.source.replace(/\r/g, "").trim();
+    const matches = (lines: string[]) =>
+      isFenceLine(lines[lineStart] ?? "") &&
+      isFenceLine(lines[lineEnd] ?? "") &&
+      lines.slice(lineStart + 1, lineEnd).map(stripPrefix).join("\n").replace(/\r/g, "").trim() === expected;
+    const fresh = (lines: string[]) => pipeTable(m, false).map((l) => (fencePrefix(lines[lineStart]) ?? "") + l);
+    let done = false;
+
+    const view = this.app.workspace
+      .getLeavesOfType("markdown")
+      .map((l) => l.view)
+      .find((v): v is MarkdownView => v instanceof MarkdownView && v.file?.path === file.path && v.getMode() === "source");
+    if (view) {
+      const editor = view.editor;
+      const lines: string[] = [];
+      for (let n = 0; n <= Math.min(lineEnd, editor.lineCount() - 1); n++) lines.push(editor.getLine(n));
+      if (matches(lines)) {
+        editor.replaceRange(fresh(lines).join("\n"), { line: lineStart, ch: 0 }, { line: lineEnd, ch: editor.getLine(lineEnd).length });
+        done = true;
+      }
+    } else {
+      await this.app.vault.process(file, (data) => {
+        const lines = data.split("\n");
+        if (!matches(lines)) return data;
+        lines.splice(lineStart, lineEnd - lineStart + 1, ...fresh(lines));
+        done = true;
+        return lines.join("\n");
+      });
+    }
+    if (!done) {
+      new Notice("Interactive Tables: the note changed underneath the table; it wasn't converted.");
+      return;
+    }
+    if (m.cells.some((c) => c.rs > 1 || c.cs > 1)) new Notice("Merged cells were split, since plain markdown tables can't merge cells.");
+    if ([...m.rowStyles, ...m.colStyles, ...m.cells.map((c) => c.style)].some(hasStyle))
+      new Notice("Cell colors and fonts were dropped, since plain markdown tables can't hold them.");
   }
 
   /* ---------- persistence ---------- */
