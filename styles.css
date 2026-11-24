@@ -52,6 +52,19 @@
 .rt-root .rt-cell-content p {
   margin: 0.2em 0;
 }
+/* Inline code and other preformatted text: let it keep its own height instead of being cut off at its line box
+   (seen when the app is zoomed out, where fractional pixel sizes round the box down). */
+.rt-root .rt-cell-content code,
+.rt-root .rt-cell-content kbd {
+  line-height: inherit;
+  overflow: visible;
+  padding-block: 0.1em;
+}
+.rt-root .rt-cell-content,
+.rt-root .rt-cell-content > div {
+  overflow: visible;
+}
+
 .rt-root .rt-cell-content ul,
 .rt-root .rt-cell-content ol {
   padding-inline-start: 1.4em;
